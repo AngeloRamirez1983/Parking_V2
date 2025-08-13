@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Parking – ID QR (Roles + Tarifas + Impresión)</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <style>
+    :root{ --bg:#0b1220; --card:#10192b; --muted:#93a4c0; --txt:#eef2ff; --accent:#0ea5e9; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,'Noto Sans',sans-serif;background:linear-gradient(180deg,#0b1220,#0e1a2f);color:var(--txt)}
+    .container{max-width:1100px;margin:0 auto;padding:16px}
+    h1{margin:8px 0 2px;font-size:22px}
+    h2{font-size:18px;margin:0 0 8px}
+    .muted{color:var(--muted)}
+    .card{background:var(--card);border:1px solid #0b1f38;border-radius:16px;padding:16px;box-shadow:0 10px 30px #0007;margin:12px 0}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row > *{flex:1 1 220px}
+    input,select,button{padding:12px 14px;border-radius:12px;border:1px solid #234;background:#0b1728;color:#eef6ff}
+    input.upper{text-transform:uppercase}
+    button{cursor:pointer;font-weight:600}
+    .btn{background:#0f2a44}
+    .btn-ok{background:#16803d;border-color:#146c33}
+    .btn-warn{background:#b96a09;border-color:#9a5808}
+    .btn-ghost{background:#0d1526;border-color:#15213a}
+    .qrbox{width:220px;height:220px;border:1px dashed #2b4364;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#0b1728}
+    .hidden{display:none !important}
+    pre{white-space:pre-wrap;word-break:break-word}
+    video{width:100%;max-height:280px;border-radius:12px;border:1px solid #123;background:#000}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #1f2e46;padding:8px;text-align:left;font-size:14px}
+    .kpi{display:flex;gap:12px;flex-wrap:wrap}
+    .kpi .box{flex:1 1 180px;background:#0d1c32;border:1px solid #123;padding:12px;border-radius:12px}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+
+    /* Print */
+    @media print{
+      body{background:#fff;color:#000}
+      .no-print, header, footer{display:none !important}
+      .ticket-print{display:block}
+      .ticket{width:80mm}
+    }
+    .ticket{background:#fff;color:#000;border-radius:12px;padding:12px}
+    .ticket h3{margin:0 0 6px}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header class="row">
+      <div style="flex:2">
+        <h1>Parking – ID QR</h1>
+        <div class="muted">Zona horaria: America/Santiago (24h)</div>
+      </div>
+      <div style="flex:1;text-align:right">
+        <div id="userInfo" class="muted">No autenticado</div>
+        <div class="row no-print" style="justify-content:flex-end">
+          <button class="btn" id="btnLogin">Iniciar sesión</button>
+          <button class="btn-ghost hidden" id="btnLogout">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- LOGIN -->
+    <section class="card" id="viewLogin">
+      <h2>Acceso</h2>
+      <div class="row">
+        <div>
+          <label>Usuario</label>
+          <input id="loginUser" placeholder="admin u operador" />
+        </div>
+        <div>
+          <label>Clave</label>
+          <input id="loginPass" type="password" placeholder="*****" />
+        </div>
+      </div>
+      <div class="row no-print" style="margin-top:8px">
+        <button class="btn-ok" id="doLogin">Entrar</button>
+        <div class="muted">Admin: <span class="mono">12345</span> · Operador: <span class="mono">67890</span></div>
+      </div>
+    </section>
+
+    <!-- HOME -->
+    <section class="card hidden" id="viewHome">
+      <h2 id="homeTitle">Operación</h2>
+      <div class="kpi">
+        <div class="box"><div class="muted">Tickets abiertos</div><div id="kpiOpen">0</div></div>
+        <div class="box"><div class="muted">Ventas del día</div><div>$ <span id="kpiSales">0</span></div></div>
+        <div class="box"><div class="muted">Hora</div><div class="mono" id="nowClock"></div></div>
+      </div>
+      <div class="row no-print" style="margin-top:12px">
+        <button class="btn-ok" id="goCheckIn">Entrada (Check‑in)</button>
+        <button class="btn-warn" id="goCheckOut">Salida / Cobro</button>
+        <button class="btn" id="goReports">Reportes</button>
+        <button class="btn hidden" id="goAdmin">Administración</button>
+      </div>
+    </section>
+
+    <!-- CHECK-IN -->
+    <section class="card hidden" id="viewCheckIn">
+      <h2>Entrada (Check‑in)</h2>
+      <div class="row">
+        <div>
+          <label>Patente</label>
+          <input id="patenteIn" class="upper" placeholder="AA-BB-11" maxlength="10" />
+        </div>
+        <div>
+          <label>Saludo</label>
+          <input id="saludoIn" placeholder="Bienvenido!" value="Bienvenido!" />
+        </div>
+        <div style="align-self:end">
+          <button class="btn-ok" id="btnGenerar">Generar Ticket</button>
+        </div>
+      </div>
+      <div id="ticketInfo" class="hidden" style="margin-top:12px">
+        <div class="row">
+          <div style="flex:2 1 260px">
+            <div class="muted">Datos guardados</div>
+            <pre id="ticketData"></pre>
+            <div class="muted">ID del ticket: <span id="ticketIdSpan" class="mono"></span></div>
+          </div>
+          <div style="flex:1 1 220px">
+            <div class="muted">QR</div>
+            <div id="qrBox" class="qrbox"></div>
+            <div id="qrError" class="muted" style="margin-top:6px"></div>
+          </div>
+        </div>
+        <div class="row no-print" style="margin-top:8px">
+          <button class="btn" id="btnImprimir">Imprimir</button>
+        </div>
+        <div class="ticket ticket-print hidden" id="printTicket">
+          <h3>Ticket de Estacionamiento</h3>
+          <div class="mono" id="printTicketBody"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHECK-OUT -->
+    <section class="card hidden" id="viewCheckOut">
+      <h2>Salida / Cobro</h2>
+      <div class="row no-print">
+        <button class="btn-warn" id="btnIniciar">Leer QR (cámara)</button>
+        <button class="btn-ghost" id="btnDetener">Detener</button>
+      </div>
+      <video id="vid" playsinline muted class="hidden"></video>
+      <canvas id="frame" class="hidden"></canvas>
+      <div class="muted" id="scanMsg" style="margin-top:8px">Inactivo</div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label>Ingresar ID manual (alternativa)</label>
+          <input id="manualId" placeholder="pega aquí el ID" />
+        </div>
+        <div style="align-self:end"><button class="btn" id="btnBuscarManual">Buscar</button></div>
+      </div>
+
+      <div id="chargeArea" class="hidden" style="margin-top:12px">
+        <div class="row">
+          <div style="flex:2">
+            <table>
+              <tbody>
+                <tr><th>Patente</th><td id="chPlate" class="mono"></td></tr>
+                <tr><th>Ingreso</th><td id="chIn" class="mono"></td></tr>
+                <tr><th>Salida</th><td id="chOut" class="mono"></td></tr>
+                <tr><th>Duración</th><td id="chDur" class="mono"></td></tr>
+                <tr><th>Tarifa</th><td id="chTariff" class="mono"></td></tr>
+                <tr><th>Total</th><td id="chTotal" class="mono"></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="flex:1">
+            <select id="payMethod">
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="otros">Otros</option>
+            </select>
+            <button class="btn-ok" id="btnCharge">Cobrar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REPORTES -->
+    <section class="card hidden" id="viewReports">
+      <h2>Reportes</h2>
+      <div class="row no-print">
+        <button class="btn" id="btnExportCSV">Exportar CSV</button>
+      </div>
+      <table id="tblTickets">
+        <thead><tr><th>ID</th><th>Patente</th><th>Ingreso</th><th>Salida</th><th>Estado</th><th>Total</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- ADMIN -->
+    <section class="card hidden" id="viewAdmin">
+      <h2>Administración</h2>
+      <div class="row">
+        <div class="card" style="flex:1">
+          <h3>Tarifas</h3>
+          <label>$/min</label><input id="tarPerMin" type="number" min="0" step="1" />
+          <label>mínimo $</label><input id="tarMin" type="number" min="0" step="1" />
+          <label>gracia (min)</label><input id="tarGrace" type="number" min="0" step="1" />
+          <label>redondeo (min)</label><input id="tarRound" type="number" min="1" step="1" />
+          <div class="row" style="margin-top:8px"><button class="btn-ok" id="btnSaveTar">Guardar</button></div>
+          <div class="mono muted" id="tarView" style="margin-top:8px"></div>
+        </div>
+        <div class="card" style="flex:1">
+          <h3>Usuarios operadores</h3>
+          <div class="row">
+            <input id="opUser" placeholder="usuario" />
+            <input id="opPass" placeholder="clave" />
+            <button class="btn-ok" id="btnAddOp">Crear</button>
+          </div>
+          <table id="tblOps" style="margin-top:8px">
+            <thead><tr><th>Usuario</th><th>Acciones</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <footer class="muted">Para imprimir en EPSON L210 usa el diálogo del navegador (Ctrl/Cmd+P). Si quieres formato térmico luego lo adapto a 58/80mm.</footer>
+  </div>
+
+<script>
+// ====== Utilidades y TZ ======
+const TZ='America/Santiago';
+const byId=(id)=>document.getElementById(id);
+const fmtDate=(iso)=> new Date(iso).toLocaleString('es-CL',{ timeZone: TZ, hour12:false });
+const nowISO=()=> new Date().toISOString();
+
+// ====== Estado simple en localStorage ======
+const store={
+  get(k,def){ try{ const v=localStorage.getItem(k); return v? JSON.parse(v): def; }catch(_){ return def; } },
+  set(k,v){ localStorage.setItem(k, JSON.stringify(v)); },
+};
+
+// usuarios: [{user,pass,role}]
+function ensureDefaults(){
+  const users = store.get('users', null);
+  if(!users){
+    store.set('users', [
+      {user:'admin', pass:'12345', role:'admin'},
+      {user:'operador', pass:'67890', role:'operador'}
+    ]);
+  }
+  const tariff = store.get('tariff', null);
+  if(!tariff){ store.set('tariff', { perMin:50, min:200, grace:0, round:1, updatedAt: nowISO() }); }
+  if(!store.get('tickets')) store.set('tickets', {}); // map by id
+  if(!store.get('payments')) store.set('payments', []);
+}
+ensureDefaults();
+
+const session={ user:null, role:null };
+
+function login(user,pass){
+  const users=store.get('users',[]);
+  const u=users.find(x=>x.user===user && x.pass===pass);
+  if(!u) return false; session.user=u.user; session.role=u.role; return true;
+}
+function logout(){ session.user=null; session.role=null; }
+
+function show(id){
+  ['viewLogin','viewHome','viewCheckIn','viewCheckOut','viewReports','viewAdmin'].forEach(v=> byId(v).classList.add('hidden'));
+  byId(id).classList.remove('hidden');
+}
+
+// ====== KPI & reloj ======
+function refreshKPIs(){
+  const tix=store.get('tickets',{}); const open=Object.values(tix).filter(t=>t.status==='open').length;
+  const pays=store.get('payments',[]);
+  const today=new Date().toLocaleDateString('en-CA',{timeZone:TZ});
+  let sales=0; for(const p of pays){ const d=new Date(p.at).toLocaleDateString('en-CA',{timeZone:TZ}); if(d===today) sales+=p.total; }
+  byId('kpiOpen').textContent=open; byId('kpiSales').textContent=sales.toLocaleString('es-CL');
+}
+setInterval(()=>{ byId('nowClock').textContent=new Date().toLocaleString('es-CL',{timeZone:TZ,hour12:false}); },1000);
+
+// ====== Tarifas y cálculo ======
+function getTariff(){ return store.get('tariff',{perMin:50,min:200,grace:0,round:1}); }
+function roundUp(v,step){ return step<=1? v: Math.ceil(v/step)*step; }
+function calcCharge(inISO,outISO){
+  const t=getTariff(); const mins=Math.max(0, Math.ceil((new Date(outISO)-new Date(inISO))/60000));
+  if(mins<=t.grace) return { mins, billable:0, total:0, t };
+  let bill=roundUp(mins - t.grace, t.round); let total=Math.max(t.min, bill*t.perMin);
+  return { mins, billable:bill, total, t };
+}
+
+// ====== QR ID corto ======
+function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function saveTicket(id,data){ const map=store.get('tickets',{}); map[id]=data; store.set('tickets',map); }
+function getTicket(id){ const map=store.get('tickets',{}); return map[id]||null; }
+function savePayment(ticketId,total,method){ const pays=store.get('payments',[]); pays.push({ticketId,total,method,at:nowISO()}); store.set('payments',pays); }
+
+// ====== LOGIN UI ======
+byId('btnLogin').addEventListener('click', ()=> show('viewLogin'));
+byId('btnLogout').addEventListener('click', ()=>{ logout(); byId('userInfo').textContent='No autenticado'; byId('btnLogout').classList.add('hidden'); show('viewLogin'); });
+byId('doLogin').addEventListener('click', ()=>{
+  const u=byId('loginUser').value.trim(); const p=byId('loginPass').value.trim();
+  if(!login(u,p)){ alert('Credenciales inválidas'); return; }
+  byId('userInfo').textContent=`${session.user} (${session.role})`;
+  byId('btnLogout').classList.remove('hidden');
+  byId('goAdmin').classList.toggle('hidden', session.role!=='admin');
+  byId('homeTitle').textContent = session.role==='admin'? 'Operación (Administrador)':'Operación (Operador)';
+  show('viewHome'); refreshKPIs();
+});
+
+// ====== Navegación home ======
+byId('goCheckIn').addEventListener('click', ()=> show('viewCheckIn'));
+byId('goCheckOut').addEventListener('click', ()=> show('viewCheckOut'));
+byId('goReports').addEventListener('click', ()=>{ fillTable(); show('viewReports'); });
+byId('goAdmin').addEventListener('click', ()=>{ renderTariff(); renderOps(); show('viewAdmin'); });
+
+// ====== Check-in ======
+byId('patenteIn').addEventListener('input', (e)=>{ const p=e.target.selectionStart; e.target.value=e.target.value.toUpperCase(); e.target.setSelectionRange(p,p); });
+byId('btnGenerar').addEventListener('click', ()=>{
+  const plate=byId('patenteIn').value.trim().toUpperCase();
+  let hi=byId('saludoIn').value.trim()||'Bienvenido!';
+  if(!plate){ alert('Ingresa la patente'); return; }
+  // evitar múltiples abiertos por misma patente
+  const map=store.get('tickets',{}); const dup=Object.values(map).find(t=>t.plate===plate&&t.status==='open'); if(dup){ alert('Ya hay un ticket abierto para esta patente'); return; }
+  const id=genId();
+  const t={ id, plate, hi, in: nowISO(), out: null, status:'open' };
+  saveTicket(id,t);
+  byId('ticketData').textContent=JSON.stringify(t,null,2);
+  byId('ticketIdSpan').textContent=id; byId('ticketInfo').classList.remove('hidden');
+  const box=byId('qrBox'); box.innerHTML=''; new QRCode(box,{ text:id, width:220, height:220, correctLevel: QRCode.CorrectLevel.M });
+  // preparar impresión
+  byId('printTicketBody').textContent = `ID: ${id}\nPatente: ${plate}\nIngreso: ${fmtDate(t.in)}\nSaludo: ${hi}`;
+  refreshKPIs();
+});
+byId('btnImprimir').addEventListener('click', ()=> window.print());
+
+// ====== Check-out (lector + manual) ======
+let mediaStream=null, timer=null, detector=null;
+async function getDetector(){ if(!('BarcodeDetector' in window)) return null; if(!detector){ try{ detector=new BarcodeDetector({formats:['qr_code']}); }catch(_){ detector=null; } } return detector; }
+async function startScan(){
+  const det=await getDetector(); if(!det){ byId('scanMsg').textContent='Navegador sin BarcodeDetector (usa ingreso manual)'; return; }
+  try{
+    mediaStream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+    const vid=byId('vid'); vid.srcObject=mediaStream; await vid.play(); vid.classList.remove('hidden'); byId('scanMsg').textContent='Escaneando...'; const frame=byId('frame');
+    timer=setInterval(async()=>{ const w=vid.videoWidth,h=vid.videoHeight; if(!w||!h) return; frame.width=w; frame.height=h; frame.getContext('2d').drawImage(vid,0,0,w,h); const codes=await det.detect(frame); if(codes&&codes[0]){ await stopScan(); handleId(codes[0].rawValue.trim(),'Cámara'); } },300);
+  }catch(err){ byId('scanMsg').textContent='No se pudo acceder a la cámara: '+(err&&err.message?err.message:err); }
+}
+async function stopScan(){ if(timer){clearInterval(timer); timer=null;} if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null;} byId('vid').classList.add('hidden'); byId('scanMsg').textContent='Inactivo'; }
+byId('btnIniciar').addEventListener('click', startScan);
+byId('btnDetener').addEventListener('click', stopScan);
+byId('btnBuscarManual').addEventListener('click', ()=>{ const id=byId('manualId').value.trim(); if(!id){alert('Ingresa ID'); return;} handleId(id,'Manual'); });
+
+function handleId(id, source){
+  const t=getTicket(id);
+  if(!t){ alert(`No se encontró ticket para ID ${id}`); return; }
+  const outISO=nowISO(); const calc=calcCharge(t.in,outISO);
+  byId('chargeArea').classList.remove('hidden');
+  byId('chPlate').textContent=t.plate; byId('chIn').textContent=fmtDate(t.in); byId('chOut').textContent=fmtDate(outISO);
+  byId('chDur').textContent=`${calc.mins} min (tarificables ${calc.billable})`;
+  byId('chTariff').textContent=`$${calc.t.perMin}/min | mín $${calc.t.min} | gracia ${calc.t.grace} | redondeo ${calc.t.round}`;
+  byId('chTotal').textContent=`$ ${calc.total.toLocaleString('es-CL')}`;
+  // stash para cobrar
+  byId('chargeArea').dataset.id=id; byId('chargeArea').dataset.total=calc.total;
+}
+byId('btnCharge').addEventListener('click', ()=>{
+  const id=byId('chargeArea').dataset.id; const total=Number(byId('chargeArea').dataset.total||0); const method=byId('payMethod').value; const t=getTicket(id); if(!t){ alert('Ticket no encontrado'); return; }
+  t.out=nowISO(); t.status='closed'; saveTicket(id,t); savePayment(id,total,method); alert(`Cobro registrado: $ ${total.toLocaleString('es-CL')}`); refreshKPIs(); show('viewHome');
+});
+
+// ====== Reportes ======
+function fillTable(){ const tbody=byId('tblTickets').querySelector('tbody'); tbody.innerHTML=''; const map=store.get('tickets',{}); const rows=Object.values(map).sort((a,b)=> (a.in<b.in?1:-1)); const pays=store.get('payments',[]); const m=new Map(pays.map(p=>[p.ticketId,p.total])); for(const t of rows){ const tr=document.createElement('tr'); tr.innerHTML=`<td class="mono">${t.id}</td><td class="mono">${t.plate}</td><td class="mono">${fmtDate(t.in)}</td><td class="mono">${t.out?fmtDate(t.out):'-'}</td><td>${t.status}</td><td class="mono">${t.out? (m.get(t.id)||0).toLocaleString('es-CL'):'-'}</td>`; tbody.appendChild(tr);} }
+byId('btnExportCSV').addEventListener('click', ()=>{
+  const map=store.get('tickets',{}); const rows=[["ID","Patente","Ingreso","Salida","Estado","Total($)"]]; const pays=store.get('payments',[]); const m=new Map(pays.map(p=>[p.ticketId,p.total])); for(const t of Object.values(map)){ rows.push([t.id,t.plate,fmtDate(t.in),t.out?fmtDate(t.out):'',t.status,t.out?(m.get(t.id)||0):0]); }
+  const csv=rows.map(r=> r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\n'); const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`reporte_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+});
+
+// ====== Admin: tarifas y operadores ======
+function renderTariff(){ const t=getTariff(); byId('tarPerMin').value=t.perMin; byId('tarMin').value=t.min; byId('tarGrace').value=t.grace; byId('tarRound').value=t.round; byId('tarView').textContent=JSON.stringify(t,null,2); }
+byId('btnSaveTar').addEventListener('click', ()=>{ const t={ perMin:Number(byId('tarPerMin').value||0), min:Number(byId('tarMin').value||0), grace:Number(byId('tarGrace').value||0), round:Number(byId('tarRound').value||1), updatedAt: nowISO() }; store.set('tariff',t); renderTariff(); alert('Tarifa guardada'); });
+
+function renderOps(){ const tbody=byId('tblOps').querySelector('tbody'); tbody.innerHTML=''; const users=store.get('users',[]).filter(u=>u.role==='operador'); for(const u of users){ const tr=document.createElement('tr'); tr.innerHTML=`<td>${u.user}</td><td><button class="btn-ghost" data-del="${u.user}">Eliminar</button></td>`; tbody.appendChild(tr);} Array.from(tbody.querySelectorAll('button[data-del]')).forEach(b=> b.addEventListener('click',()=>{ const who=b.getAttribute('data-del'); let users=store.get('users',[]); users=users.filter(x=> !(x.user===who && x.role==='operador')); store.set('users',users); renderOps(); })); }
+byId('btnAddOp').addEventListener('click', ()=>{ const u=byId('opUser').value.trim(); const p=byId('opPass').value.trim(); if(!u||!p){alert('Usuario y clave son requeridos'); return;} const users=store.get('users',[]); if(users.find(x=>x.user===u)){ alert('Ya existe un usuario con ese nombre'); return; } users.push({user:u,pass:p,role:'operador'}); store.set('users',users); byId('opUser').value=''; byId('opPass').value=''; renderOps(); });
+
+// ====== Init ======
+show('viewLogin');
+</script>
+</body>
+</html>
